@@ -20,10 +20,12 @@ local singletons  = require "kong.singletons"
 local concurrency = require "kong.concurrency"
 local declarative = require "kong.db.declarative"
 local certificate = require "kong.runloop.certificate"
+local BasePlugin  = require "kong.plugins.base_plugin"
 
 
 local kong        = kong
 local pcall       = pcall
+local pairs       = pairs
 local ipairs      = ipairs
 local tostring    = tostring
 local tonumber    = tonumber
@@ -848,6 +850,25 @@ do
       combos = {},
     }
 
+    if subsystem == "stream" then
+      new_plugins.phases = {
+        init_worker = {},
+        preread     = {},
+        log         = {},
+      }
+
+    else
+      new_plugins.phases = {
+        init_worker   = {},
+        certificate   = {},
+        rewrite       = {},
+        access        = {},
+        header_filter = {},
+        body_filter   = {},
+        log           = {},
+      }
+    end
+
     local counter = 0
 
     for plugin, err in kong.db.plugins:each(1000) do
@@ -899,6 +920,13 @@ do
     for _, plugin in ipairs(loaded_plugins) do
       if not new_plugins.combos[plugin.name] then
         new_plugins.combos[plugin.name] = EMPTY_T
+
+      else
+        for phase_name, phase in pairs(new_plugins.phases) do
+          if plugin.handler[phase_name] ~= BasePlugin[phase_name] then
+            phase[plugin.name] = true
+          end
+        end
       end
     end
 
